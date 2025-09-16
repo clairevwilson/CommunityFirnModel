@@ -248,7 +248,7 @@ def makeSpinFiles(CLIM_name,timeres='1D',Tinterp='mean',spin_date_st = 1980.0, s
         T_mean = (df_TS_re['TSKIN']).mean()
 
         hh  = np.arange(0,501)
-        age, rho = hla.hl_analytic(350,hh,T_mean,BDOT_mean_IE)    
+        age, rho = hla.hl_analytic(350,hh,T_mean,BDOT_mean_IE)  
         if not desired_depth:
             # desired_depth = hh[np.where(rho>=916)[0][0]]
             desired_depth = hh[np.where(rho>=rho_bottom)[0][0]]
