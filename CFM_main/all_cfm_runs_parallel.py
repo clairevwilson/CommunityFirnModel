@@ -25,11 +25,13 @@ fp_forcings = '../../Firn/Forcings/'
 fp_out = '../../Firn/Output/'
 runs_dict = {'temp':[-5,-2,-1,0,1,2,5],
              'temp_sameacc':[-5,-2,-1,0,1,2,5],
+             'stemp':[-5,-2,-1,0,1,2,5],
              'precip':[0.5,0.667,0.9,1,1.1,1.5,2]}
 sites = ['T','Z','EC','KPS']
 
 n_runs = len(sites) * sum([len(runs_dict[n]) for n in runs_dict])
 n_processes = args_base.n_simultaneous_processes
+print(f'Beginning {n_runs} runs on {n_processes} processes')
 if n_runs <= n_processes:
     n_runs_per_process = 1
     n_process_with_extra = 0
@@ -56,17 +58,21 @@ for site in sites:
         list_runs = runs_dict[run_type]
         for change in list_runs:
             fn_data = fp_forcings
-            fn_out = fp_out
+            fn_out = fp_out + args.glacier + args.site +'/'
             if run_type == 'temp':
                 temp_change_str = '+'+str(change) if change > 0 else str(change)
-                fn_data += f'{args.glacier}/{args.glacier}{args.site}_{temp_change_str}C_{args.dt}_forcings.csv'
+                fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_{temp_change_str}C_{args.dt}_forcings.csv'
                 fn_out += args.glacier + args.site + '_' + temp_change_str + '_0/'
             elif run_type == 'temp_sameacc':
                 temp_change_str = '+'+str(change) if change > 0 else str(change)
-                fn_data += f'{args.glacier}/{args.glacier}{args.site}_{temp_change_str}C_sameacc_{args.dt}_forcings.csv'
+                fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_{temp_change_str}C_sameacc_{args.dt}_forcings.csv'
                 fn_out += args.glacier + args.site + '_' + temp_change_str + '_sameacc_0/'
+            elif run_type == 'stemp':
+                temp_change_str = '+'+str(change) if change > 0 else str(change)
+                fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_TS{temp_change_str}_{args.dt}_forcings.csv'
+                fn_out += args.glacier + args.site + '_TS' + temp_change_str + '_0/'
             elif run_type == 'precip':
-                fn_data += f'../Data/{args.glacier}{args.site}_{change}_{args.dt}_forcings.csv'
+                fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_{change}_{args.dt}_forcings.csv'
                 fn_out += args.glacier + args.site + '_' + str(change) + '_0/'
 
             # Pack vars
@@ -89,10 +95,10 @@ def run_cfm_parallel(list_inputs):
         fn_out, args, fn_data = inputs
 
         # Run the model
-        print('Beginning',fn_out,'with',fn_data)
+        print('Beginning',fn_out,'with',fn_data, flush=True)
         try:
             with contextlib.redirect_stdout(open(os.devnull, 'w')):
-                sim.run_cfm(fn_out, args, fn_data)
+                sim.run_cfm(fn_out, args, fn_data, physRho='Crocus')
         except Exception as e:
             failed.append(fn_out)
             print('FAILED IN', fn_out)

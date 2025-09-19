@@ -7,6 +7,9 @@ import os
 import h5py
 import cmasher as cmr
 from scipy.spatial.distance import euclidean
+import socket
+if 'trace' in socket.gethostname():
+    base_fp = '/trace/group/rounce/cvwilson/Firn/'
 
 colors = ['#63c4c7','#fcc02e','#4D559C','#BF1F6A','#60C252',
               '#F77808','#298282','#999999','#FF89B0','#427801']
@@ -164,7 +167,7 @@ def simple_plot(site, measured, modeled, print_error=True, savefig=True, t=None,
     else:
         fig.suptitle(t, y=0.95)
     if savefig:
-        plt.savefig(f'{glacier}{site}/{glacier}{site}_firn_core.png',dpi=300,bbox_inches='tight')
+        plt.savefig(base_fp + f'Figs/{glacier}{site}_firn_core.png',dpi=300,bbox_inches='tight')
     if not plot_ax:
         ax.set_ylabel('Depth below surface (m)')
         ax.set_xlabel('Density (kg m$^{-3}$)')
@@ -173,7 +176,7 @@ def simple_plot(site, measured, modeled, print_error=True, savefig=True, t=None,
         return ax, MAE, ME
 
 def simple_comparison(site, measured_list, modeled_list, label_list, 
-                      print_error=True, savefig=True, t=None,
+                      print_error=True, savefig=False, t=None,
                       plot_ax=False, color_scheme='qualitative',):
     # make figure
     if not plot_ax:
@@ -195,7 +198,7 @@ def simple_comparison(site, measured_list, modeled_list, label_list,
         if color_scheme == 'qualitative':
             color = colors[i]
         elif color_scheme == 'continuous':
-            cmap = cmr.wildfire
+            cmap = cmr.iceburn
             norm = mpl.colors.Normalize(vmin=0, vmax=len(idx)-1)
             if i == 2:
                 color = cmap(norm(1.4))
@@ -212,10 +215,10 @@ def simple_comparison(site, measured_list, modeled_list, label_list,
 
         if not plot_ax:
              # dummy legend items
-            lax.plot(np.nan, np.nan, color=color, label=label,linestyle='--', linewidth=2)
+            lax.plot(np.nan, np.nan, color=color, label=label, linewidth=1)
 
         # plot modeled density
-        ax.plot(density_mod, depth_mod, color=color, linestyle='--', alpha=1,linewidth=2)
+        ax.plot(density_mod, depth_mod, color=color, linewidth=1)
 
          # Calculate error metrics  
         if print_error:     
@@ -251,7 +254,7 @@ def simple_comparison(site, measured_list, modeled_list, label_list,
     else:
         fig.suptitle(t, y=0.95)
     if savefig:
-        plt.savefig(savefig,dpi=300,bbox_inches='tight')
+        plt.savefig(base_fp + 'Figs/' + savefig,dpi=300,bbox_inches='tight')
     plt.show()
 
 def compare_sites(measured_list, modeled_list, sites, print_error=True, savefig=True, t=None):
@@ -260,6 +263,7 @@ def compare_sites(measured_list, modeled_list, sites, print_error=True, savefig=
     lax.plot(np.nan, np.nan, color='k',label='Measured', linewidth=2)
     idx = np.arange(len(measured_list))
 
+    bottoms = []
     for i, measured, modeled, site in zip(idx, measured_list, modeled_list, sites):
         density_meas, layer_bottoms, layer_tops = measured
         density_mod, depth_mod = modeled
@@ -277,10 +281,11 @@ def compare_sites(measured_list, modeled_list, sites, print_error=True, savefig=
         # plot modeled density
         ax.plot(density_mod, depth_mod, color=colors[i], linestyle=':', linewidth=2)
         lax.plot(np.nan, np.nan, color=colors[i], linestyle=':', linewidth=2, label=site)
+        bottoms.append(max(layer_bottoms))
 
     # Beautify
     ax.invert_yaxis()
-    ax.set_ylim(max(layer_bottoms), 0)
+    ax.set_ylim(max(bottoms), 0)
     ax.set_xlim(150, 950)
     ax.tick_params(length=5)
 
@@ -296,7 +301,7 @@ def compare_sites(measured_list, modeled_list, sites, print_error=True, savefig=
     if t:
         fig.suptitle(t, y=0.95)
     if savefig:
-        plt.savefig(f'compare_sites.png',dpi=300,bbox_inches='tight')
+        plt.savefig(base_fp + f'Figs/compare_sites.png',dpi=300,bbox_inches='tight')
     plt.show()
 
 def compare_site_data(sites,dates='default',t=False,savefig=False):
@@ -343,7 +348,7 @@ def compare_site_data(sites,dates='default',t=False,savefig=False):
     if t:
         fig.suptitle(t, y=0.95)
     if savefig:
-        plt.savefig(f'compare_site_data.png',dpi=300,bbox_inches='tight')
+        plt.savefig(base_fp + 'Figs/compare_site_data.png',dpi=300,bbox_inches='tight')
     plt.show()
 
 def plot_wolverine_years(output, print_error=True):
@@ -432,42 +437,54 @@ def plot_wolverine_years(output, print_error=True):
     # Beautify
     fig.supylabel('Depth below surface (m)')
     fig.supxlabel('Density (kg m$^{-3}$)')
-    fig.suptitle(f'Wolverine EC firn core comparison',y=0.95)
-    plt.savefig(f'wolverineEC/wolverineEC_firn_core_all.png',dpi=300,bbox_inches='tight')
+    fig.suptitle('Wolverine EC firn core comparison',y=0.95)
+    plt.savefig(base_fp + 'Figs/wolverineEC_firn_core_all.png',dpi=300,bbox_inches='tight')
     plt.show()
 
-def plot_years_together(output, site, print_error=True, every=1):
+def plot_years_together(output, site, print_error=True, every=1, dates='all',savefig=False):
     var = 'density'
     # get dates where there is a core
     glacier = 'wolverine' if site == 'EC' else 'kahiltna' if site == 'KPS' else 'gulkana'
     fp = f'../Data/cores/{glacier}/'
-    all_dates = []
+    if glacier == 'wolverine':
+        all_dates = dates_wolverine if dates == 'all' else dates_wolverine_spring
+    elif glacier == 'kahiltna':
+        all_dates = dates_kahiltna if dates == 'all' else dates_kahiltna_spring
     avg_depths = np.arange(0, 25.5, 0.5)
     all_density = []
-    for f in os.listdir(fp):
-        if glacier+site in f:
-            date = f.split(site)[-1][1:-4]
-            all_dates.append(date)
-            df = pd.read_csv(fp + f)
-            layer_middle = df['SBD'].values - df['length'].values / 2
-            dens_middle = df['density'].values
-            dens_interp = np.interp(avg_depths, layer_middle, dens_middle)
-            all_density.append(dens_interp)
+    for date in all_dates:
+        df = pd.read_csv(fp + f'{glacier}{site}_{date}.csv')
+        layer_middle = df['SBD'].values - df['length'].values / 2
+        dens_middle = df['density'].values
+        dens_interp = np.interp(avg_depths, layer_middle, dens_middle)
+        all_density.append(dens_interp)
     avg_density = np.mean(all_density, axis=0)
     all_dates = all_dates[::every]
 
     # make figure
-    fig, (ax1, ax2, ax3, lax) = plt.subplots(1, 4, figsize=(8, 4),
-                                        width_ratios=[1,1,1,1],
-                                        sharey=True,
-                                        gridspec_kw={'hspace':0, 'wspace':0})
-    ax1.set_title('Mean')
-    ax2.set_title('Measured\nAnomoly')
-    ax3.set_title('Modeled\nAnomoly')
+    # fig, axes = plt.subplots(len(all_dates), 2, figsize=(4, 8),
+    #                                     sharey=True,
+    #                                     gridspec_kw={'hspace':0, 'wspace':0})
+    fig = plt.figure(figsize=(4, len(all_dates)))
+    gs = mpl.gridspec.GridSpec(len(all_dates), 2, figure=fig)
+    gs.update(hspace=0, wspace=0) 
+    # lax = fig.add_subplot(gs[0, :])  # This spans both columns
+    # Create the rest of the subplots
+    axes = []
+    for i in range(0, len(all_dates)):
+        axes.append([])
+        for j in range(2):
+            ax = fig.add_subplot(gs[i, j])
+            axes[-1].append(ax)
+    axes = np.array(axes)
+    axes[0, 0].set_title('Data')
+    axes[0, 1].set_title('Anomoly')
+    # axes[0, 2].set_title('Modeled\nAnomoly')
 
     # colormap
-    cmap = plt.get_cmap('plasma')
-    norm = mpl.colors.Normalize(vmin=0, vmax=len(all_dates)-1)
+    # cmap = plt.get_cmap('plasma')
+    # cmap = cmr.jungle
+    # norm = mpl.colors.Normalize(vmin=-5, vmax=len(all_dates)+2)
 
     # dummy legend items
     # lax.plot(np.nan, np.nan, color='gray',label='Measured', linewidth=2)
@@ -475,8 +492,13 @@ def plot_years_together(output, site, print_error=True, every=1):
 
     # loop through dates and plot each date
     for d,date in enumerate(all_dates):
+        ax1, ax2 = axes[d]
         # color
-        c = cmap(norm(d))
+        # c = cmap(norm(d))
+        c = colors[5]
+
+        # Plot mean on bottom
+        ax1.plot(avg_density, avg_depths, color='lightgray',label='Mean')
 
         # load data for this date
         df = pd.read_csv(f'../Data/cores/{glacier}/{glacier}{site}_{date}.csv')
@@ -497,22 +519,27 @@ def plot_years_together(output, site, print_error=True, every=1):
         # average the modeled density between the depths of the pit
         density_meas_interp = np.interp(avg_depths, layer_middle, density_meas)
         density_mod_interp = np.interp(avg_depths, depth_mod, density_mod)
-        ax2.plot(density_meas_interp - avg_density, avg_depths, color=c)
-        ax3.plot(density_mod_interp - avg_density, avg_depths, color=c)
-        lax.plot(np.nan, np.nan, color=c, linewidth=2, label=date.replace('_','/'))
-        ax1.plot(density_meas, layer_middle, color=c, linewidth=1)
+        ax2.plot(density_meas_interp - avg_density, avg_depths, color='k')
+        ax2.plot(density_mod_interp - avg_density, avg_depths, color=c)
+        # lax.plot(np.nan, np.nan, color=c, linewidth=2, label=date.replace('_','/'))
+        ax1.plot(density_meas, layer_middle, color='k',  label='Measured')
+        ax1.plot(density_mod_interp, avg_depths, color=c, label='Modeled')
         # ax.text(170, 26, date[5:7]+'/'+date[:4])
 
         # Beautify
-        for ax in [ax1, ax2, ax3]:
+        for ax in [ax1, ax2]:
             ax.invert_yaxis()
-            max_depth = 25 if site == 'EC' else 15
+            max_depth = 26 if site == 'EC' else 15
+            tick2 = 20 if site == 'EC' else 10
             ax.set_ylim(max_depth, 0)
             ax.tick_params(length=5)
+            ax.set_yticks([0, tick2])
         ax1.set_xlim(150, 950)
-        for ax in [ax2, ax3]:
+        for ax in [ax2]:
             ax.set_xlim(-300, 300)
             ax.axvline(0, linewidth=0.5, color='k')
+            ax.set_yticks([])
+            ax.set_yticklabels([])
 
         # Calculate error metrics  
         if print_error:     
@@ -524,20 +551,27 @@ def plot_years_together(output, site, print_error=True, every=1):
             ME = np.nanmean(density_mod_interp - density_meas)
             print('         Mean Error (Bias):',ME, 'kg m-3')
 
-    # Plot mean on top
-    ax1.plot(avg_density, avg_depths, color='k')
+        # Label row with the date
+        ax2.set_ylabel(date[:4]) # .replace('_','/'))
+        ax2.yaxis.set_label_position('right')
+    # axes[0,0].legend()
+    lax = fig.add_axes((1.1, 0.4, 0.2, 0.3))
+    lax.plot(np.nan, np.nan, color=c, label='Modeled')
+    lax.plot(np.nan, np.nan, color='k', label='Measured')
+    lax.plot(np.nan, np.nan, color='lightgray', label='Mean measured')
 
     # Turn off label ax
     lax.axis('off')
 
     # Add legend
-    lax.legend(ncols=1, fontsize=10,loc='center')
+    lax.legend(ncols=1, fontsize=10,loc='upper center')
 
     # Beautify
-    fig.supylabel('Depth below surface (m)')
-    fig.supxlabel('Density (kg m$^{-3}$)', y=-0.03)
+    fig.supylabel('Depth below surface (m)',x=-0.01)
+    fig.supxlabel('Density (kg m$^{-3}$)')
     # fig.suptitle(f'Wolverine EC firn core comparison',y=1)
-    plt.savefig(f'{glacier}{site}/{glacier}{site}_firn_core_together.png',dpi=300,bbox_inches='tight')
+    if savefig:
+        plt.savefig(base_fp+'Figs/'+savefig,dpi=300,bbox_inches='tight')
     plt.show()
 
 def compare_densification(fn, all_rho, date, measured, print_error=True):

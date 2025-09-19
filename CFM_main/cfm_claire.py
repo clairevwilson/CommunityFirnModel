@@ -8,6 +8,8 @@ import shutil
 import argparse
 import firn_density_nospin as fdns
 import RCMpkl_to_spin as RCM
+import socket
+machine = socket.gethostname()
 
 # parse command-line args
 parser = argparse.ArgumentParser()
@@ -35,7 +37,6 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
     # filenames of configs and data
     glacier = 'wolverine' if args.site == 'EC' else 'kahiltna' if args.site == 'KPS' else 'gulkana'
     json_fn = 'my_configs.json'
-    out_prefix = f'../../Firn/Output/{glacier}{args.site}/'
 
     # get configs file
     with open(json_fn) as file:
@@ -52,14 +53,14 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
 
         # correct the accumulation according to the ratio:
         # kp calculated from regression / kp used in simulation
-        if args.site == 'T':
-            df['BDOT'] *= 3.665 / 3.5
-        elif args.site == 'Z':
-            df['BDOT'] *= 3.774 / 3.5
-        elif args.site == 'EC':
-            df['BDOT'] *= 1.650 / 1.75
-        elif args.site == 'KPS':
-            df['BDOT'] *= 2.470 / 2
+        # if args.site == 'T':
+        #     df['BDOT'] *= 3.665 / 3.5
+        # elif args.site == 'Z':
+        #     df['BDOT'] *= 3.774 / 3.5
+        # elif args.site == 'EC':
+        #     df['BDOT'] *= 1.650 / 1.75
+        # elif args.site == 'KPS':
+        #     df['BDOT'] *= 2.470 / 2
 
     else:
         print('forcing file not found: generate and save to', forcing_fn)
@@ -106,13 +107,13 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
         c['rhos0'] = option_rho 
 
     # path (within CFM_main that the results will be stored in)
-    c['resultsFolder'] = out_prefix + out_fp 
+    c['resultsFolder'] = out_fp 
 
     ### format the CFM forcing data (including creating the spin up)
     ### climateTS is a dictionary with the various climate fields needed, in the correct units.
     climateTS, StpsPerYr, depth_S1, depth_S2, grid_bottom, SEBfluxes = (
         RCM.makeSpinFiles(df,timeres=c['DFresample'],Tinterp='mean',spin_date_st = sds, 
-        spin_date_end = sde, melt=c['MELT'], desired_depth = None, SEB=c['SEB'], rho_bottom=900))
+        spin_date_end = sde, melt=c['MELT'], desired_depth = None, SEB=c['SEB'], rho_bottom=850))
 
     # clip forcing data
     climateTS['forcing_data_start'] = sds
@@ -161,40 +162,21 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
 if __name__=='__main__':
     # all_density = ['HLdynamic','Arthern2010S','Arthern2010T', 'Barnola1991',
     #        'Ligtenberg2011','Crocus','KuipersMunneke2015','GSFC2020']
-    # for o,option in enumerate(args.physrho):
-    for temp_change in [-5,-2,-1,1,2,5]:
-        temp_change_str = '+'+str(temp_change) if temp_change > 0 else str(temp_change)
-        fn_data = f'../../Firn/Forcings/{args.glacier}{args.site}/{args.glacier}{args.site}_{temp_change_str}C_{args.dt}_forcings.csv' # _sameacc_
-        # base filepath
-        base_out_fp = f'CFMresults_{args.glacier}{args.site}_'
-        out_fp = base_out_fp
-        out_fp += temp_change_str + '_' # sameacc_'
-        # for precip_change in [0.5, 0.667, 0.9, 1.1, 1.5, 2]:
-        #     fn_data = f'../Data/{glacier}{args.site}_{precip_change}_{args.dt}_forcings.csv'
-        #     out_fp = base_out_fp
-        #     out_fp += str(precip_change) + '_'
-
-        # add physics to output filepath
-        # out_fp += option + '_'
-        
+    for o,option in enumerate(args.physrho):
         # add command line filetag
         if args.tag:
             out_fp += args.tag + '_'
 
-        # add variable initial density
-        # if int(args.input_srho) == 1:
-        #     out_fp += 'wsrho_'
-        # elif int(args.input_srho) > 1:
-        #     out_fp += 'srho'+str(int(args.input_srho))+'_'
-
-        # find unique filepath
-        i = 0
-        # while os.path.exists(out_prefix + out_fp + str(i)):
-        #     i += 1
-        out_fp += str(i) + '/'
+        if 'trace' not in machine:
+            out_prefix = f'../../Firn/Output/{args.glacier}{args.site}/'
+        else:
+            out_prefix = ''
+        fp = '/trace/group/rounce/cvwilson/Firn/'
+        out_fp = fp + f'Output/{args.glacier}{args.site}/{args.glacier}{args.site}_{option}_0/'
+        fn_data = fp + f'Forcings/{args.glacier}{args.site}/{args.glacier}{args.site}_1d_forcings.csv'
 
         print('Beginning',out_fp)
         # try:
-        run_cfm(out_fp, args, forcing_fn = fn_data)
+        run_cfm(out_fp, args,fn_data, physRho=option)
         # except:
         #     print(out_fp, 'failed')
