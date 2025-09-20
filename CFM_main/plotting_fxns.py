@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from matplotlib.animation import FuncAnimation
 import numpy as np
 import xarray as xr
 import os
@@ -269,6 +270,8 @@ def compare_sites(measured_list, modeled_list, sites, print_error=True, savefig=
         density_mod, depth_mod = modeled
 
         density_mod_interp = []
+        depth_plot = []
+        density_plot = []
         for density_meas_layer, top, bottom in zip(density_meas, layer_tops, layer_bottoms):
             layer_idx = np.where((depth_mod >= top) & (depth_mod <= bottom))[0]
             if len(layer_idx) > 0:
@@ -276,7 +279,9 @@ def compare_sites(measured_list, modeled_list, sites, print_error=True, savefig=
             else:
                 density_mod_layer = np.nan
             density_mod_interp.append(density_mod_layer)
-            ax.plot([density_meas_layer, density_meas_layer], [top, bottom], color=colors[i], linewidth=3)
+            depth_plot.append([top, bottom])
+            density_plot.append([density_meas_layer, density_meas_layer])
+        ax.plot(np.array(density_plot).flatten(), np.array(depth_plot).flatten(), color=colors[i], linewidth=2)
 
         # plot modeled density
         ax.plot(density_mod, depth_mod, color=colors[i], linestyle=':', linewidth=2)
@@ -307,7 +312,8 @@ def compare_sites(measured_list, modeled_list, sites, print_error=True, savefig=
 def compare_site_data(sites,dates='default',t=False,savefig=False):
     # make figure
     fig, (ax, lax) = plt.subplots(1,2, width_ratios=[2, 1], figsize=(6,4)) #,gridspec_kw={'hspace':0.4})
-    lax.plot(np.nan, np.nan, color='k',label='Measured', linewidth=2)
+    lax.plot(np.nan, np.nan, color='k',label='Measured (2025)', linewidth=2)
+    lax.plot(np.nan, np.nan, color='k', alpha=0.3, linewidth=2, label='Measured (past years)')
     idx = np.arange(len(sites))
 
     if dates == 'default':
@@ -320,15 +326,21 @@ def compare_site_data(sites,dates='default',t=False,savefig=False):
 
     all_bottoms = []
     for i, site, dates in zip(idx,sites,dates_by_site):
-        for date in dates:
+        alphas = [0.3] * (len(dates) - 1) + [1]
+        for d, date in enumerate(dates):
             density_meas, layer_tops, layer_bottoms = get_density_measured(site, date)
+            depth_plot = []
+            density_plot = []
             for density_meas_layer, top, bottom in zip(density_meas, layer_tops, layer_bottoms):
-                ax.plot([density_meas_layer, density_meas_layer], [top, bottom], color=colors[i], linewidth=3)
+                # ax.plot([density_meas_layer, density_meas_layer], [top, bottom], color=colors[i], linewidth=3)
+                depth_plot.append([top, bottom])
+                density_plot.append([density_meas_layer, density_meas_layer])
+            ax.plot(np.array(density_plot).flatten(), np.array(depth_plot).flatten(), color=colors[i], linewidth=2, alpha=alphas[d])
 
             # get max depth
             all_bottoms.append(max(layer_bottoms))
         # plot label
-        lax.plot(np.nan, np.nan, color=colors[i], linewidth=3, label=site)
+        lax.plot(np.nan, np.nan, color=colors[i], linewidth=2, label=site)
 
     # Beautify
     ax.invert_yaxis()
@@ -441,7 +453,8 @@ def plot_wolverine_years(output, print_error=True):
     plt.savefig(base_fp + 'Figs/wolverineEC_firn_core_all.png',dpi=300,bbox_inches='tight')
     plt.show()
 
-def plot_years_together(output, site, print_error=True, every=1, dates='all',savefig=False):
+def plot_years_together(output, site, print_error=True, every=1, 
+                        dates='all',savefig=False):
     var = 'density'
     # get dates where there is a core
     glacier = 'wolverine' if site == 'EC' else 'kahiltna' if site == 'KPS' else 'gulkana'
@@ -450,9 +463,11 @@ def plot_years_together(output, site, print_error=True, every=1, dates='all',sav
         all_dates = dates_wolverine if dates == 'all' else dates_wolverine_spring
     elif glacier == 'kahiltna':
         all_dates = dates_kahiltna if dates == 'all' else dates_kahiltna_spring
+    snow_df = pd.read_csv(f'../Data/cores/{glacier}/{glacier}{site}_snowdepth.csv')
     avg_depths = np.arange(0, 25.5, 0.5)
     all_density = []
     for date in all_dates:
+        # get depth of seasonal snow
         df = pd.read_csv(fp + f'{glacier}{site}_{date}.csv')
         layer_middle = df['SBD'].values - df['length'].values / 2
         dens_middle = df['density'].values
@@ -497,6 +512,8 @@ def plot_years_together(output, site, print_error=True, every=1, dates='all',sav
         # c = cmap(norm(d))
         c = colors[5]
 
+        min_depth = snow_df.loc[snow_df['date'] == date, 'snowdepth'].values[0]
+
         # Plot mean on bottom
         ax1.plot(avg_density, avg_depths, color='lightgray',label='Mean')
 
@@ -517,13 +534,15 @@ def plot_years_together(output, site, print_error=True, every=1, dates='all',sav
             density_mod = density_mod[0]
 
         # average the modeled density between the depths of the pit
-        density_meas_interp = np.interp(avg_depths, layer_middle, density_meas)
-        density_mod_interp = np.interp(avg_depths, depth_mod, density_mod)
-        ax2.plot(density_meas_interp - avg_density, avg_depths, color='k')
-        ax2.plot(density_mod_interp - avg_density, avg_depths, color=c)
+        avg_density_plot = avg_density[avg_depths >= min_depth]
+        avg_depths_plot = avg_depths[avg_depths >= min_depth]
+        density_meas_interp = np.interp(avg_depths_plot, layer_middle, density_meas)
+        density_mod_interp = np.interp(avg_depths_plot, depth_mod, density_mod)
+        ax2.plot(density_meas_interp - avg_density_plot, avg_depths_plot, color='k')
+        ax2.plot(density_mod_interp - avg_density_plot, avg_depths_plot, color=c)
         # lax.plot(np.nan, np.nan, color=c, linewidth=2, label=date.replace('_','/'))
         ax1.plot(density_meas, layer_middle, color='k',  label='Measured')
-        ax1.plot(density_mod_interp, avg_depths, color=c, label='Modeled')
+        ax1.plot(density_mod_interp, avg_depths_plot, color=c, label='Modeled')
         # ax.text(170, 26, date[5:7]+'/'+date[:4])
 
         # Beautify
@@ -638,6 +657,127 @@ def compare_densification(fn, all_rho, date, measured, print_error=True):
     ax.set_xlabel('Density (kg m$^{-3}$)')
     ax.tick_params(length=5)
     return fig, ax
+
+def animate(modeled, measured, dates, snowdepths=0):
+    fig, (ax, lax) = plt.subplots(1, 2, width_ratios=(1, 0.2))
+    ax.set_xlim(400, 900)
+    ax.set_ylim(0, 30)
+    ax.invert_yaxis()
+    lax.plot(np.nan, np.nan, c=colors[0], linestyle=':',label='Model',linewidth=2)
+    lax.plot(np.nan, np.nan, c='k',label='Measured')
+    lax.fill_between([np.nan, np.nan], np.nan, np.nan, color='gray', alpha=0.3, label='Seasonal snow')
+    lax.axis('off')
+    lax.legend(loc='center')
+
+    # create plot lines
+    line_meas, = ax.plot([], [],color='k')
+    line_mod, = ax.plot([], [],color=colors[0], linestyle=':',linewidth=2)
+    fill = ax.fill_between([300, 900], 0, 0, color='gray', alpha=0.3)
+    if snowdepths == 0:
+        snowdepths = [0] * len(modeled)
+
+    def init():
+        line_mod.set_data([],[])
+        line_meas.set_data([],[])
+        return line_meas, line_mod, fill
+    
+    def update(i):
+        density_meas, bottoms, tops = measured[i]
+        density_mod, depth_mod = modeled[i]
+        snow_depth = snowdepths[i]
+        date = dates[i]
+
+        all_meas, all_meas_depths = ([], [])
+        for dens, bottom, top in zip(density_meas, bottoms, tops):
+            all_meas.append([dens, dens])
+            all_meas_depths.append([top, bottom])
+        all_meas = np.array(all_meas).flatten()
+        all_meas_depths = np.array(all_meas_depths).flatten()
+        line_meas.set_data(all_meas, all_meas_depths)
+        line_mod.set_data(density_mod, depth_mod)
+        for coll in ax.collections:
+            coll.remove()
+        ax.fill_between([300, 900], 0, snow_depth,color='gray', alpha=0.3)
+        ax.set_title(date[:4])
+        return line_meas, line_mod
+    
+    ani = FuncAnimation(fig, update, frames=len(dates),
+                            init_func=init, blit=False)
+    ani.save(base_fp+'Figs/animation.gif', fps=2)
+    return
+
+def animate_sites(sites, modeled, measured, dates, snowdepths=0):
+    fig, axes = plt.subplots(1, len(sites) + 1, width_ratios=(1, 1, 1, 1, 1), sharey=True)
+    site_axes = axes[:-1]
+    lax = axes[-1]
+    lax.plot(np.nan, np.nan, c=colors[0], linestyle=':',label='Model',linewidth=2)
+    lax.plot(np.nan, np.nan, c='k',label='Measured')
+    lax.fill_between([np.nan, np.nan], np.nan, np.nan, color='gray', alpha=0.3, label='Seasonal snow')
+    lax.axis('off')
+    lax.legend(loc='center')
+
+    # create plot lines
+    lines_meas = []
+    lines_mod = []
+    fills = []
+    if snowdepths == 0:
+        snowdepths = [0] * len(modeled[0])
+
+    for s,ax in enumerate(site_axes):
+        ax.set_xlim(400, 900)
+        ax.set_ylim(0, 30)
+        ax.invert_yaxis()
+        line_meas, = ax.plot([], [], color='k')
+        line_mod,  = ax.plot([], [], color=colors[s], linestyle=':', linewidth=2)
+        fill = ax.fill_between([300, 900], 0, 0, color='gray', alpha=0.3)
+        lines_meas.append(line_meas)
+        lines_mod.append(line_mod)
+        fills.append(fill)
+
+    def init():
+        for line_meas, line_mod in zip(lines_meas, lines_mod):
+            line_meas.set_data([], [])
+            line_mod.set_data([], [])
+        return lines_meas + lines_mod + fills
+
+    def update(i):
+        artists = []
+        for s in range(len(sites)):
+            ax = site_axes[s]
+            density_meas, bottoms, tops = measured[s][i]
+            density_mod, depth_mod = modeled[s][i]
+            snow_depth = snowdepths[s][i]
+            if len(snow_depth) == 0:
+                snow_depth = [0]
+            date = dates[i]
+
+            # Measured profile as vertical bars
+            all_meas, all_meas_depths = [], []
+            for dens, bottom, top in zip(density_meas, bottoms, tops):
+                all_meas.append([dens, dens])
+                all_meas_depths.append([top, bottom])
+            all_meas = np.array(all_meas).flatten()
+            all_meas_depths = np.array(all_meas_depths).flatten()
+
+            lines_meas[s].set_data(all_meas, all_meas_depths)
+            lines_mod[s].set_data(density_mod, depth_mod)
+
+            # Remove old fill and add new snow shading
+            for coll in ax.collections:
+                coll.remove()
+            ax.fill_between([300, 900], 0, snow_depth, color='gray', alpha=0.3)
+
+            site = sites[s]
+            glacier = 'wolverine' if site == 'EC' else 'kahiltna' if site == 'KPS' else 'gulkana'
+            ax.set_title(f'{glacier.capitalize()} {site}\n{date[:4]}')
+            artists.extend([lines_meas[s], lines_mod[s]])
+
+        return artists
+    
+    ani = FuncAnimation(fig, update, frames=len(dates),
+                            init_func=init, blit=False)
+    ani.save(base_fp+'Figs/sites_animation.gif', fps=2)
+    return
 
 def profile_permutation_test(wolverine_profiles, site_profile, n_permutations=10000):
     # Stack Wolverine profiles into matrix
