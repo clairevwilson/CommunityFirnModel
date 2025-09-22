@@ -63,8 +63,7 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
         #     df['BDOT'] *= 2.470 / 2
 
     else:
-        print('forcing file not found: generate and save to', forcing_fn)
-        assert 1==0
+        assert os.path.exists(forcing_fn), f'forcing file not found: generate and save to {forcing_fn}'
 
     # start timer
     tnow = time.time()
