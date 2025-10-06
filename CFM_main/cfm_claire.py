@@ -12,30 +12,32 @@ import socket
 machine = socket.gethostname()
 
 # parse command-line args
-parser = argparse.ArgumentParser()
-parser.add_argument('-n','--new_spin',action='store',type=bool,default=True)
-parser.add_argument('-site',action='store',type=str,default='Z')
-parser.add_argument('-dt',action='store',type=str,default='1d')
-parser.add_argument('-tag',action='store',type=str,default=None)
-parser.add_argument('-physrho',nargs='+',default=['GSFC2020'],
-                    help='Provide one or more densification schemes')
-parser.add_argument('-input_srho',default=0,
-                    help='0 for default, 1 for variable, any number for other constant (e.g. 250)')
-args = parser.parse_args()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-new','--new_spin',action='store_false')
+    parser.add_argument('-site',action='store',type=str,default='Z')
+    parser.add_argument('-dt',action='store',type=str,default='1d')
+    parser.add_argument('-tag',action='store',type=str,default=None)
+    parser.add_argument('-physrho',nargs='+',default=['GSFC2020'],
+                        help='Provide one or more densification schemes')
+    parser.add_argument('-input_srho',default=0,
+                        help='0 for default, 1 for variable, any number for other constant (e.g. 250)')
+    parser.add_argument('-spin_name',default='CFMspin.hdf5', type=str, help='name of spinup file')
+    parser.add_argument('-result_name',default='CFMresults.hdf5', type=str, help='name of spinup file')
+    args = parser.parse_args()
 
-# check if inputting surface density
-args.glacier = 'wolverine' if args.site == 'EC' else 'kahiltna' if args.site == 'KPS' else 'gulkana'
-if type(args.tag) == str and 'pygem' in args.tag:
-    forcing_fn = f'../../Firn/Forcings/{args.glacier}/{args.glacier}{args.site}_pygem_forcings.csv'
-    args.dt = '1MS'
-elif int(args.input_srho) == 1:
-    forcing_fn = f'../../Firn/Forcings/{args.glacier}/{args.glacier}{args.site}_{args.dt}_forcings_wsrho.csv'
-else:
-    forcing_fn = f'../../Firn/Forcings/{args.glacier}/{args.glacier}{args.site}_{args.dt}_forcings.csv'
+    # check if inputting surface density
+    args.glacier = 'wolverine' if args.site == 'EC' else 'kahiltna' if 'K' in args.site else 'gulkana'
+    if type(args.tag) == str and 'pygem' in args.tag:
+        forcing_fn = f'../../Firn/Forcings/{args.glacier}/{args.glacier}{args.site}_pygem_forcings.csv'
+        args.dt = '1MS'
+    elif int(args.input_srho) == 1:
+        forcing_fn = f'../../Firn/Forcings/{args.glacier}/{args.glacier}{args.site}_{args.dt}_forcings_wsrho.csv'
+    else:
+        forcing_fn = f'../../Firn/Forcings/{args.glacier}/{args.glacier}{args.site}_{args.dt}_forcings.csv'
 
 def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
     # filenames of configs and data
-    glacier = 'wolverine' if args.site == 'EC' else 'kahiltna' if args.site == 'KPS' else 'gulkana'
     json_fn = 'my_configs.json'
 
     # get configs file
@@ -45,7 +47,7 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
     # read forcings
     if os.path.exists(forcing_fn):
         # read already generated forcings
-        print(forcing_fn)
+        print('Forcing with',forcing_fn)
         df = pd.read_csv(forcing_fn,parse_dates=True,index_col=0)
 
         # clip to start of year
@@ -101,8 +103,11 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
         if int(variable_srho) not in [0,1]:
             option_rho = float(variable_srho)
         else:
-            option_rho_dict = {'Z':366, 'T':347, 'EC':427, 'KPS':417} #
-            option_rho = option_rho_dict[args.site]
+            option_rho_dict = {'Z':366, 'T':347, 'EC':427, 'KPS':417, 'KQU':400} # KQU: 341
+            if args.site in option_rho_dict:
+                option_rho = option_rho_dict[args.site]
+            else:
+                option_rho = 400
         c['rhos0'] = option_rho 
 
     # path (within CFM_main that the results will be stored in)
@@ -111,8 +116,8 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
     ### format the CFM forcing data (including creating the spin up)
     ### climateTS is a dictionary with the various climate fields needed, in the correct units.
     climateTS, StpsPerYr, depth_S1, depth_S2, grid_bottom, SEBfluxes = (
-        RCM.makeSpinFiles(df,timeres=c['DFresample'],Tinterp='mean',spin_date_st = sds, 
-        spin_date_end = sde, melt=c['MELT'], desired_depth = None, SEB=c['SEB'], rho_bottom=850))
+            RCM.makeSpinFiles(df,timeres=c['DFresample'],Tinterp='mean',spin_date_st = sds, 
+            spin_date_end = sde, melt=c['MELT'], desired_depth = None, SEB=c['SEB'], rho_bottom=850))
 
     # clip forcing data
     climateTS['forcing_data_start'] = sds
@@ -128,6 +133,11 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
     c['grid_outputs'] = True
     c['grid_output_res'] = 0.05
 
+    # rerun the spin up each time if True
+    NewSpin = args.new_spin 
+    c['spinFileName'] = args.spin_name
+    c['resultsFileName'] = args.result_name
+
     # name configuration file
     CFMconfig = out_fp + 'CFMconfig.json'
     # if os.path.exists(os.path.join(c['resultsFolder'],configName)):
@@ -141,9 +151,6 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
         os.mkdir(out_fp)
     with open(CFMconfig,'w') as fp:
         fp.write(json.dumps(c,sort_keys=True, indent=4, separators=(',', ': ')))
-
-    # rerun the spin up each time if True
-    NewSpin = args.new_spin 
 
     # create CFM instance by passing config file and forcing data
     firn = fdns.FirnDensityNoSpin(CFMconfig, climateTS = climateTS, NewSpin = NewSpin, SEBfluxes = SEBfluxes)
@@ -171,7 +178,7 @@ if __name__=='__main__':
         else:
             out_prefix = ''
         fp = '/trace/group/rounce/cvwilson/Firn/'
-        out_fp = fp + f'Output/{args.glacier}{args.site}/{args.glacier}{args.site}_{option}_0/'
+        out_fp = fp + f'Output/{args.glacier}{args.site}/{args.glacier}{args.site}_test/'
         fn_data = fp + f'Forcings/{args.glacier}{args.site}/{args.glacier}{args.site}_1d_forcings.csv'
 
         print('Beginning',out_fp)

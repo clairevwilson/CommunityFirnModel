@@ -14,6 +14,8 @@ parser.add_argument('-new','--new_spin',action='store',type=bool,default=True)
 parser.add_argument('-site',action='store',type=str,default='Z')
 parser.add_argument('-dt',action='store',type=str,default='1d')
 parser.add_argument('-tag',action='store',type=str,default=None)
+parser.add_argument('-spin_name',default='CFMspin.hdf5', type=str, help='name of spinup file')
+parser.add_argument('-result_name',default='CFMresults.hdf5', type=str, help='name of spinup file')
 parser.add_argument('-physrho',nargs='+',default=['GSFC2020'],
                     help='Provide one or more densification schemes')
 parser.add_argument('-input_srho',default=0,
@@ -23,7 +25,8 @@ args_base = parser.parse_args()
 failed =[]
 fp_forcings = '../../Firn/Forcings/'
 fp_out = '../../Firn/Output/'
-sites = ['T','Z','EC','KPS']
+sites = ['T','Z','EC','KPS','KQU']
+# sites = ['KQU','KT1','KT2','KT3','KPS']
 
 n_runs = len(sites)
 n_processes = args_base.n_simultaneous_processes
@@ -48,10 +51,14 @@ set_no = 0  # Index for the parallel process
 for site in sites:
     args = copy.deepcopy(args_base)
     args.site = site
-    args.glacier = 'wolverine' if site == 'EC' else 'kahiltna' if site == 'KPS' else 'gulkana'
+    args.glacier = 'wolverine' if site == 'EC' else 'kahiltna' if 'K' in site else 'gulkana'
 
-    fn_data = fp_forcings + f'{args.glacier}{args.site}/{args.glacier}{args.site}_{args.dt}_noqm_forcings.csv'
-    fn_out = fp_out + args.glacier + args.site +'/' + args.glacier + args.site + '_noqm'
+    fn_data = fp_forcings + f'{args.glacier}{args.site}/{args.glacier}{args.site}_{args.dt}_tpx1_forcings.csv'
+    fn_out = fp_out + args.glacier + args.site +'/'
+    if not os.path.exists(fp_out + args.glacier + args.site):
+        os.mkdir(fp_out + args.glacier + args.site)
+    args.result_name = 'CFMresults_baseline.hdf5'
+    args.spin_name = 'CFMspin_baseline.hdf5'
 
     # Pack vars
     packed_vars[set_no].append((fn_out, args, fn_data))

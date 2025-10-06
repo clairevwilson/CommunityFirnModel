@@ -24,10 +24,10 @@ failed =[]
 fp_forcings = '../../Firn/Forcings/'
 fp_out = '../../Firn/Output/'
 runs_dict = {'temp':[-5,-2,-1,0,1,2,5],
-             'temp_sameacc':[-5,-2,-1,0,1,2,5],
-             'stemp':[-5,-2,-1,0,1,2,5],
+            #  'temp_sameacc':[-5,-2,-1,0,1,2,5],
+            #  'stemp':[-5,-2,-1,0,1,2,5],
              'precip':[0.5,0.667,0.9,1,1.1,1.5,2]}
-sites = ['T','Z','EC','KPS']
+sites = ['T','Z','EC','KPS','KQU']
 
 n_runs = len(sites) * sum([len(runs_dict[n]) for n in runs_dict])
 n_processes = args_base.n_simultaneous_processes
@@ -52,31 +52,39 @@ set_no = 0  # Index for the parallel process
 for site in sites:
     args = copy.deepcopy(args_base)
     args.site = site
-    args.glacier = 'wolverine' if site == 'EC' else 'kahiltna' if site == 'KPS' else 'gulkana'
+    args.glacier = 'wolverine' if site == 'EC' else 'kahiltna' if 'K' in site else 'gulkana'
 
     for run_type in runs_dict:
         list_runs = runs_dict[run_type]
-        for change in list_runs:
-            fn_data = fp_forcings
+        for value in list_runs:
+            fn_data = fp_forcings + args.glacier + args.site +'/'
             fn_out = fp_out + args.glacier + args.site +'/'
+            # if run_type == 'temp':
+            #     temp_change_str = '+'+str(change) if change > 0 else str(change)
+            #     fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_{temp_change_str}C_{args.dt}_forcings.csv'
+            #     fn_out += args.glacier + args.site + '_' + temp_change_str + '_1/'
+            # elif run_type == 'stemp':
+            #     temp_change_str = '+'+str(change) if change > 0 else str(change)
+            #     fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_TS{temp_change_str}_{args.dt}_forcings.csv'
+            #     fn_out += args.glacier + args.site + '_TS' + temp_change_str + '_1/'
+            # elif run_type == 'precip':
+            #     fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_{change}_{args.dt}_forcings.csv'
+            #     fn_out += args.glacier + args.site + '_' + str(change) + '_1/'
             if run_type == 'temp':
-                temp_change_str = '+'+str(change) if change > 0 else str(change)
-                fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_{temp_change_str}C_{args.dt}_forcings.csv'
-                fn_out += args.glacier + args.site + '_' + temp_change_str + '_0/'
-            elif run_type == 'temp_sameacc':
-                temp_change_str = '+'+str(change) if change > 0 else str(change)
-                fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_{temp_change_str}C_sameacc_{args.dt}_forcings.csv'
-                fn_out += args.glacier + args.site + '_' + temp_change_str + '_sameacc_0/'
-            elif run_type == 'stemp':
-                temp_change_str = '+'+str(change) if change > 0 else str(change)
-                fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_TS{temp_change_str}_{args.dt}_forcings.csv'
-                fn_out += args.glacier + args.site + '_TS' + temp_change_str + '_0/'
+                var_str = 'temp+'+str(value) if value >= 0 else 'temp'+str(value)
             elif run_type == 'precip':
-                fn_data += f'{args.glacier}{args.site}/{args.glacier}{args.site}_{change}_{args.dt}_forcings.csv'
-                fn_out += args.glacier + args.site + '_' + str(change) + '_0/'
+                var_str = 'tpx'+str(value)
+            fn_data += f'{args.glacier}{site}_1d_{var_str}_forcings.csv'
+            # fn_out += args.glacier + args.site + '_' + var_str
+
+            # Copy args for this run
+            args_run = copy.deepcopy(args)
+            args_run.result_name = f'CFMresults_{var_str}.hdf5'
+            args_run.spin_name = 'CFMspin_baseline.hdf5'
+            args_run.new_spin = False
 
             # Pack vars
-            packed_vars[set_no].append((fn_out, args, fn_data))
+            packed_vars[set_no].append((fn_out, args_run, fn_data))
 
             # Check if moving to the next set of runs
             n_runs_set = n_runs_per_process + (1 if set_no < n_process_with_extra else 0)
