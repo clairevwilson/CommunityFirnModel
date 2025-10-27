@@ -1,3 +1,10 @@
+"""
+This script contains a WHOLE BUNCH of plotting 
+functions I developed to visualize the firn model
+and data. Leaving this in a bit of a messy state,
+but everything should function.
+"""
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -8,12 +15,16 @@ import os
 import h5py
 import cmasher as cmr
 from scipy.spatial.distance import euclidean
+from scipy.optimize import curve_fit
+from functools import partial
 import socket
 if 'trace' in socket.gethostname():
     base_fp = '/trace/group/rounce/cvwilson/Firn/'
 
 colors = ['#63c4c7','#fcc02e','#4D559C','#BF1F6A','#60C252',
               '#F77808','#298282','#999999','#FF89B0','#427801']
+site_colors = {'EC':colors[1],'T':"#828EFF",'Z':colors[2],'KPS':colors[3],'KQU':'#FF89B0',
+               'KT1':colors[5], 'KT2':colors[6], 'KT3':colors[7]}
 cmap = plt.get_cmap('Blues')
 norm = mpl.colors.Normalize(vmin=0, vmax=20)
 dates_wolverine = ['2016_05_13', '2016_06_02', '2016_07_12', '2016_08_16',
@@ -30,7 +41,7 @@ dates_KPS = ['2024_05_26', '2024_09_30', '2025_05_23']
 dates_KPS_spring = ['2024_05_26','2025_05_23']
 dates_KQU = ['2024_05_25', '2025_05_23']
 site_elevation = {'Z':2081, 'T':1877, 'EC':1348, 'KQU':2630, 'KPS':3053, 'KT1':2690,'KT2':2846,'KT3':2900}
-markers = {'EC':'*', 'Z':'s', 'T':'o', 'KPS':'^','KQU':'v','KT1':'1','KT2':'3','KT3':'2'}
+markers = {'EC':'*', 'Z':'D', 'T':'s', 'KPS':'^','KQU':'v','KT1':'1','KT2':'3','KT3':'2'}
 site_colors = {'EC':colors[0],'T':colors[1],'Z':colors[2],'KPS':colors[3],'KQU':colors[4],
                'KT1':colors[5], 'KT2':colors[6], 'KT3':colors[7]}
 
@@ -49,6 +60,19 @@ def div_colors(i):
     else:
         color = cmap(norm(i))
     return color
+
+def warming_colors(i):
+    # cmap = plt.get_cmap('plasma')
+    # norm = mpl.colors.Normalize(vmin=0,vmax=3.2)
+    if i == 0:
+        return 'k'
+    if i == 1:
+        return "#AE1957" # cmap(norm(1.4))
+    if i == 2:
+        return "#EE6A31" # cmap(norm(2.4))
+    if i == 3:
+        return "#FFC550"
+    return cmap(norm(i))
 
 def get_glacier(site):
     if site == 'EC':
@@ -232,7 +256,9 @@ def simple_comparison(site, measured_list, modeled_list, label_list,
     for i, measured, modeled, label in zip(idx, measured_list, modeled_list, label_list):
         if color_scheme == 'qualitative':
             color = colors[i]
-        elif color_scheme == 'continuous':
+        elif color_scheme == 'warming':
+            color = warming_colors(i)
+        elif color_scheme == 'diverging':
             color = div_colors(i)
         
         density_mod, depth_mod = modeled
@@ -308,7 +334,7 @@ def compare_sites(measured_list, modeled_list, sites, print_error=True, savefig=
 
         # plot modeled density
         ax.plot(density_mod, depth_mod, color=colors[i], linestyle=':', linewidth=2)
-        lax.plot(np.nan, np.nan, color=colors[i], linestyle=':', linewidth=2, label=site)
+        lax.plot(np.nan, np.nan, color=colors[i], linestyle=':', linewidth=2, label=get_glacier(site).capitalize()+' '+site)
         bottoms.append(max(layer_bottoms))
 
     # Beautify
@@ -330,11 +356,13 @@ def compare_sites(measured_list, modeled_list, sites, print_error=True, savefig=
         fig.suptitle(t, y=0.95)
     if savefig:
         plt.savefig(base_fp + f'Figs/compare_sites.png',dpi=300,bbox_inches='tight')
-    plt.show()
+    else:
+        return fig, ax
+        plt.show()
 
 def compare_site_data(sites,dates='default',t=False,savefig=False):
     # make figure
-    fig, (ax, lax) = plt.subplots(1,2, width_ratios=[2, 1], figsize=(6,4)) #,gridspec_kw={'hspace':0.4})
+    fig, (ax, lax) = plt.subplots(1,2, figsize=(6,4)) #,width_ratios=[2, 1], ,gridspec_kw={'hspace':0.4})
     lax.plot(np.nan, np.nan, color='k',label='Measured (2025)', linewidth=2)
     lax.plot(np.nan, np.nan, color='k', alpha=0.3, linewidth=2, label='Measured (past years)')
     idx = np.arange(len(sites))
@@ -365,23 +393,23 @@ def compare_site_data(sites,dates='default',t=False,savefig=False):
                 # ax.plot([density_meas_layer, density_meas_layer], [top, bottom], color=colors[i], linewidth=3)
                 depth_plot.append([top, bottom])
                 density_plot.append([density_meas_layer, density_meas_layer])
-            ax.plot(np.array(density_plot).flatten(), np.array(depth_plot).flatten(), color=colors[i], linewidth=2, alpha=alphas[d])
-
+            ax.plot(np.array(density_plot).flatten(), np.array(depth_plot).flatten(), color=site_colors[site], linewidth=2,alpha=alphas[d])
+            
             # get max depth
             all_bottoms.append(max(layer_bottoms))
         # plot label
-        lax.plot(np.nan, np.nan, color=colors[i], linewidth=2, label=site)
+        lax.plot(np.nan, np.nan, color=site_colors[site], linewidth=2, label=get_glacier(site).capitalize()+' '+site)
+        ax.plot(np.nan, np.nan, color=site_colors[site], linewidth=2, label=get_glacier(site).capitalize()+' '+site)
 
     # Beautify
     ax.invert_yaxis()
     ax.set_ylim(max(all_bottoms), 0)
     ax.set_xlim(150, 950)
     ax.tick_params(length=5)
+    # ax.legend()
 
     # Turn off label ax
     lax.axis('off')
-
-    # Add legend
     lax.legend(fontsize=10, loc='center')
 
     # Beautify
@@ -390,7 +418,7 @@ def compare_site_data(sites,dates='default',t=False,savefig=False):
     if t:
         fig.suptitle(t, y=0.95)
     if savefig:
-        plt.savefig(base_fp + 'Figs/compare_site_data.png',dpi=300,bbox_inches='tight')
+        plt.savefig(base_fp + f'Figs/compare_site_data_{sites[-1]}.png',dpi=300,bbox_inches='tight')
     plt.show()
 
 def plot_wolverine_years(output, print_error=True):
@@ -523,7 +551,7 @@ def plot_years_together(all_output, site, print_error=True, every=1,
             axes[-1].append(ax)
     axes = np.array(axes)
     axes[0, 0].set_title('Data')
-    axes[0, 1].set_title('Anomoly')
+    axes[0, 1].set_title('Anomoly\n(Modeled $-$ Measured)')
     # axes[0, 2].set_title('Modeled\nAnomoly')
 
     # colormap
@@ -583,7 +611,7 @@ def plot_years_together(all_output, site, print_error=True, every=1,
             # ax2.plot(density_meas_interp - avg_density_plot, avg_depths_plot, color='k', linestyle=':')
             ax2.plot(density_mod_interp - density_meas_interp, avg_depths_plot, color=color)
             # lax.plot(np.nan, np.nan, color=c, linewidth=2, label=date.replace('_','/'))
-            ax1.plot(density_meas, layer_middle, color='k', linestyle='--', label='Measured')
+            ax1.plot(density_meas, layer_middle, color='k', linestyle=':', label='Measured')
             # ax1.plot(density_mod_interp, avg_depths_plot, color=color, label='Modeled')
             # ax.text(170, 26, date[5:7]+'/'+date[:4])
 
@@ -619,7 +647,7 @@ def plot_years_together(all_output, site, print_error=True, every=1,
     # axes[0,0].legend()
     lax = fig.add_axes((1.1, 0.4, 0.2, 0.3))
     # lax.plot(np.nan, np.nan, color='gray', label='Modeled')
-    lax.plot(np.nan, np.nan, color='k', linestyle='--',label='Measured')
+    lax.plot(np.nan, np.nan, color='k', linestyle=':',label='Measured')
     lax.plot(np.nan, np.nan, color='lightgray', label='Mean measured')
     if len(labels) > 0:
         for i in range(len(all_output)):
@@ -716,9 +744,13 @@ def compare_densification(fn, all_rho, date, measured, print_error=True):
     ax.tick_params(length=5)
     return fig, ax
 
+def curve(x, a, b):
+    return 900 - a * np.exp(-b * x)
+
 def get_dict(sites, output_fn, forcing_fn):
     output_dict = {}
-    output_vars = ['refreeze','refreeze_ratio','runoff','density_gradient','DIP','temperature','firn_depth']
+    output_vars = ['refreeze','refreeze_ratio','runoff', # 'density_age_gradient',
+                   'density_gradient','DIP','temperature','firn_depth']
     all_vars = output_vars + ['SMELT','BDOT','MELT_ACC_RATIO','RAIN','WATER','ACC_MELT_RATIO','STEMP']
     for site in sites:
         print('starting',site)
@@ -728,18 +760,23 @@ def get_dict(sites, output_fn, forcing_fn):
         if 'K' in site:
             output_fn = base_fp + 'Output/SITE/SITE_kahiltnatest/CFMresults.hdf5'
             forcing_fn = base_fp + 'Forcings/SITE/SITE_1d_kahiltnatest.csv'
+        elif '_' in site:
+            output_fn = base_fp + 'Output/SITE/SITE/CFMresults.hdf5'
+            forcing_fn = base_fp + 'Forcings/SITE_1d_forcings.csv'
         list_all = ['']
-        if site in ['T','Z','KPS','EC']:
+        if site in ['T','Z','KPS','EC','KQU']:
             output_fn = base_fp + 'Output/SITE/SITE_CHANGE/CFMresults.hdf5'
             forcing_fn = base_fp + 'Forcings/SITE/SITE_1d_CHANGE_forcings.csv'
-            list_all = ['temp'+str(v) if v < 0 else 'temp+'+str(v) for v in [-5,-2,-1,0,1,2,5]]
-            # list_all += ['tpx'+str(v) for v in [0.5,0.667,0.9,1,1.1,1.5,2]]
+            list_all = ['temp'+str(v) if v < 0 else 'temp+'+str(v) for v in [0,0.5,1,2]] # -5,-2,-1,
+            list_all += ['tpx'+str(v) for v in [1,1.05, 1.1, 1.2]] # 0.5,0.667,0.9,
 
         for string in list_all:
-            fn_out = output_fn.replace('SITE', glacier+site).replace('CHANGE',string)
+            glaciersite = glacier+site if '_' not in site else 'site'+site
+            if '_' not in site:
+                fn_out = output_fn.replace('SITE', glaciersite).replace('CHANGE',string)
+            else:
+                fn_out = output_fn.replace('SITE', site).replace('CHANGE',string)
             output = h5py.File(fn_out,'r')
-            if site == 'EC' and string == 'temp+5':
-                continue
 
             if len(string) > 1:
                 dict_label = site+'_'+string
@@ -748,40 +785,56 @@ def get_dict(sites, output_fn, forcing_fn):
             output_dict[dict_label] = {}
 
             # select annual spring dates to get a density gradient at
-            spring_dates = pd.date_range('1980-05-01','2024-05-01',freq='YS-MAY')
+            spring_dates = pd.date_range('1981-05-01','2025-05-01',freq='YS-MAY')
             all_decimal_time = output['density'][:, 0]
             target_time = to_decimal_year(spring_dates)
             annual_gradients = []
+            annual_age_gradients = []
             annual_firndepth = []
-            for t in target_time:
+            for ti, t in enumerate(target_time):
+                # if '2025' not in str(t):
+                #     annual_gradients.append(np.nan)
+                #     annual_firndepth.append(np.nan)
+                #     continue
                 index = np.argmin(np.abs(all_decimal_time - t))
                 # get depth and data arrays
                 depth = output['depth'][1:]
                 density = output['density'][index, 1:]
-                # exclude seasonal snow
-                if os.path.exists(f'../Data/cores/{glacier}/{glacier}{site}_snowdepth.csv'):
-                    snow_df = pd.read_csv(f'../Data/cores/{glacier}/{glacier}{site}_snowdepth.csv')
-                    min_depth = np.mean(snow_df['snowdepth'].values)
-                else:
-                    min_depth = 2
-                condition = (depth >= min_depth) & (density <= 830)
+                age = output['age'][index, 1:]
+                # exclude seasonal snow and ice
+                condition = (age >= 1) & (density <= 830) # depth >= min_depth
                 density = density[condition]
                 depth = depth[condition]
-                if len(depth) > 1:
-                    # gradient, b = np.polyfit(depth, density, deg=1)
-                    gradient = np.median(np.gradient(density, depth))
-                    annual_firndepth.append(depth[-1])
-                    if gradient >= 0:
-                        annual_gradients.append(gradient)
+                age = age[condition]
+                if len(depth) > 20: # and ti == len(target_time) - 1:
+                    y = np.log(density/(900-density))
+                    m, b = np.polyfit(depth, y, deg=1)
+                    y_pred = depth*m+b
+                    R2 = 1-np.sum((y-y_pred)**2)/np.sum((y-np.mean(y))**2)
+                    # (_, b_fit), covariance = curve_fit(curve, depth, density, p0=(1, 0.1))
+                    if R2 > 0.5: # m > 0 and m < 1:
+                        annual_gradients.append(m)
                     else:
                         annual_gradients.append(np.nan)
-                        continue
+
+                    # (_, b_fit), covariance = curve_fit(curve, age, density, p0=(1, 0.1))
+                    # if b_fit > 0 and b_fit < 1:
+                    #     annual_age_gradients.append(b_fit)
+                    # else:
+                    #     annual_age_gradients.append(np.nan)
+                    annual_firndepth.append(depth[-1])
+                    # if gradient >= 0:
+                    #     annual_gradients.append(gradient)
+                    # else:
+                    #     annual_gradients.append(np.nan)
+                    #     continue
                     # b = 400
                     # ax.scatter(density, depth)
                     # ax.plot(depth*gradient + b, depth, color='gray',linewidth=0.5)
                 else:
                     annual_firndepth.append(0)
                     annual_gradients.append(np.nan)
+                    # annual_age_gradients.append(np.nan)
 
             # create dataframe with output vars
             times = np.array(from_decimal_year(output['density'][1:, 0]))
@@ -800,9 +853,10 @@ def get_dict(sites, output_fn, forcing_fn):
             df_out['refreeze_ratio'] = df_out['refreeze'] / df_out['melt']
             df_out['density_gradient'] = annual_gradients
             df_out['firn_depth'] = annual_firndepth
+            # df_out['density_age_gradient'] = annual_age_gradients
 
             # LOAD FORCING VARS
-            fn_force = forcing_fn.replace('SITE', glacier+site).replace('CHANGE', string)
+            fn_force = forcing_fn.replace('SITE', glaciersite).replace('CHANGE', string)
             df = pd.read_csv(fn_force, index_col=0, parse_dates=True)
             df_mb = df[['SMELT','BDOT','RAIN']].resample('YS-APR').sum().iloc[:-1] / 1000
             df_mb['STEMP'] = df['TS'].resample('YS-APR').mean().iloc[:-1]- 273.15
@@ -815,10 +869,15 @@ def get_dict(sites, output_fn, forcing_fn):
                     output_dict[dict_label][var] = df_out[var]
                 else:
                     output_dict[dict_label][var] = df_mb[var]
-            output_dict[dict_label]['elevation'] = [site_elevation[site]]
+            if site in site_elevation:
+                output_dict[dict_label]['elevation'] = [site_elevation[site]]
+            else:
+                site_base = 'EC' if 'EC' in site else 'T'
+                output_dict[dict_label]['elevation'] = [site_base]
     if 'EC' not in output_dict:
         output_dict['EC'] = output_dict['EC_temp+0']
         output_dict['KPS'] = output_dict['KPS_temp+0']
+        output_dict['KQU'] = output_dict['KQU_temp+0']
         output_dict['Z'] = output_dict['Z_temp+0']
         output_dict['T'] = output_dict['T_temp+0']
     return output_dict
@@ -828,9 +887,10 @@ def compare_site_characteristics(plot_vars, xvar, output_dict):
                 'MELT_ACC_RATIO':'Annual Melt / Accumulation Ratio','RAIN':'Rainfall (m w.e. / yr)',
                 'WATER':'Melt + Rainfall (m w.e. / yr)','elevation':'Elevation (m a.s.l.)',
                 'refreeze':'Refreeze (m w.e. / yr)','DIP':'Firn Air Content (m)','firn_depth':'Firn depth (m)',
-                'runoff':'Runoff (m w.e. / yr)','density_gradient':'Density gradient (kg / m$^{-3}$ / m)',
+                'runoff':'Runoff (m w.e. / yr)','density_gradient':'Densification rate\n constant, $k$ (m$^{-1}$)',
                 'refreeze_ratio':'Refreeze / Melt Ratio (-)', 'ACC_MELT_RATIO':'Annual Accumulation / Melt Ratio',
-                'STEMP':'Surface temperature ($^{\circ}$C)','temperature':'Mean firn temperature ($^{\circ}$C)'
+                'STEMP':'Surface temperature ($^{\circ}$C)','temperature':'Mean firn temperature ($^{\circ}$C)',
+                'density_age_gradient':'Density vs. age\nslope factor (yr$^{-1}$)'
                 }
     
     nrows = 1
@@ -845,12 +905,13 @@ def compare_site_characteristics(plot_vars, xvar, output_dict):
         lax = fig.add_axes([1, 0.4, 0.1, 0.2])
         fig.supxlabel(var_dict[xvar])
     else:
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*2))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(4, 4)) # figsize=(ncols*3, nrows*2))
         axes = [axes]
-        lax = fig.add_axes([1.2, 0.15, 0.3, 0.8])
+        # lax = fig.add_axes([1.25, 0.05, 0.3, 0.8])
+        lax = fig.add_axes([0.9, 0.1, 0.8, 0.8])
         axes[0].set_xlabel(var_dict[xvar])
 
-    markers = {'EC':'*', 'Z':'s', 'T':'o', 'KPS':'^','KQU':'v','KT1':'1','KT2':'3','KT3':'2'}
+    markers = {'EC':'*', 'Z':'D', 'T':'s', 'KPS':'^','KQU':'v','KT1':'1','KT2':'3','KT3':'2'}
     site_colors = {'EC':colors[0],'T':colors[1],'Z':colors[2],'KPS':colors[3],'KQU':colors[4],
                'KT1':colors[5], 'KT2':colors[6], 'KT3':colors[7]}
 
@@ -889,59 +950,150 @@ def compare_site_characteristics(plot_vars, xvar, output_dict):
             xs.append(x)
             ys.append(y)
                 
-            s = site if '_' not in site else site.split('_')[0]
+            s = site if '_t' not in site else site.split('_')[0]
             if xvar == 'MELT_ACC_RATIO' and x > 1:
                 continue
-            if '_' in site:
+            if '_t' in site:
                 # color = site_colors[s] # 
-                idict = {'temp-5':0,'temp-2':1,'temp-1':2,'temp+1':4,'temp+2':5,'temp+5':6,
-                         'tpx0.5':0,'tpx0.667':1,'tpx0.9':2,'tpx1.1':4,'tpx1.5':5,'tpx2':6}
-                color = div_colors(idict[site.split('_')[-1]]) if site[-2:] not in ['+0','x1'] else 'gray'
-                ax.errorbar(x, y, xerr=xerr, yerr=yerr,color=color, marker=markers[s], markersize=8, alpha=0.6)
-            else:
-                ax.errorbar(x, y, xerr=xerr, yerr=yerr,color=site_colors[s], marker=markers[s], markersize=8)
-            
-            if ax == axes[0]:
-                elev = site_elevation[s]
-                label = site.split('_')[0] + f'({elev} m)'
-                if 'EC_temp-1' in output_dict:
-                    if '_' not in site:
-                        lax.errorbar(np.nan, np.nan, np.nan, np.nan, label=label, 
-                             color=site_colors[s], marker=markers[s], markersize=8)
-                else:
-                    lax.errorbar(np.nan, np.nan, np.nan, np.nan, label=label, 
-                             color=site_colors[s], marker=markers[s], markersize=8)
+                idict = {
+                        # 'temp-5':0,'temp-2':1,'temp-1':2,'temp+1':4,'temp+2':5,'temp+5':6,
+                         'temp+0':0,'temp+0.5':1,'temp+1':2,'temp+2':3,
+                        #  'tpx0.5':0,'tpx0.667':1,'tpx0.9':2,'tpx1.1':4,'tpx1.5':5,'tpx2':6,
+                        'tpx1':0,'tpx1.05':1,'tpx1.1':2,'tpx1.2':3,
+                         }
+                # color = div_colors(idict[site.split('_')[-1]]) if site[-2:] not in ['+0','x1'] else 'gray'
+                # color = 'gray'
+                ecolor = warming_colors(idict[site.split('_')[-1]])
+                fcolor = ecolor if 'temp' in site else 'none'
+                # xerr=xerr, yerr=yerr,
+                # ax.scatter(x, y, color=fcolor, edgecolors=ecolor, marker=markers[s], s=100, )
+            elif site in ['EC','T','Z','KQU','KPS']:
+                # ax.errorbar(x, y, xerr=xerr, yerr=yerr,color=site_colors[s], marker=markers[s], markersize=8)  
+                ax.scatter(x, y, s=100, color='k', marker=markers[s])         # site_colors[s],  
+            elif site not in ['KT1','KT2','KT3']:
+                marker = '+' if 'EC' in s else 'x'
+                ax.scatter(x, y, s=100, color='k', marker=marker)      
                 
             title = var_dict[var]
             if var == 'MELT_ACC_RATIO':
                 title = 'Melt / Accumulation Ratio'
             if len(axes) > 1:
                 ax.set_title(title)
+            elif '\n' in title:
+                ax.set_ylabel(title)
             else:
                 ax.set_ylabel(title.replace('(', '\n('))
-            if var == 'density_gradient':
-                ax.set_ylim(0, 50)
-        # def place_labels(x, y, sites=sites, ax=ax, threshold=0.1):
-        #     placed = []
-        #     for i, (xi, yi, site) in enumerate(zip(x, y, sites)):
-        #         dx, dy = (0.07, var_dy[var])
-        #         for xj, yj in placed:
-        #             dist = np.hypot(xi + dx - xj, yi + dy - yj)
-        #             if dist < threshold:
-        #                 dx *= -1
-        #         # if site in ['EC','KPS']:
-        #         #     ha, va = ('left','bottom')
-        #         # else:
-        #         ha, va = ['center','center']
-        #         ax.text(xi, dy,  site, fontsize=12, ha=ha, va=va, color=colors[i])
-        #         # ax.scatter(xi + dx, yi + dy)
-        #         placed.append((xi + dx, yi + dy))
 
-        # place_labels(np.array(xs), np.array(ys), sites, ax)
+    sites_by_elev = ['EC','T','Z','KQU','KPS'] # 'KT1','KT2','KT3',
+    for site in sites_by_elev:
+        elev = site_elevation[site]
+        label = site + f' ({elev} m)'
+        lax.scatter(np.nan, np.nan,  s=50,label=label, color='k', marker=markers[site])
+    lax.scatter(-9999, -9999, color='white', label=' ')
+    for change in ['temp+0.5','temp+1','temp+2','tpx1.05','tpx1.1','tpx1.2']:
+        ecolor = warming_colors(idict[change])
+        fcolor = ecolor if 'temp' in change else 'none'
+        if 'temp' in change:
+            label = f'Temp {change[4:]}'+'$^{\circ}$C'
+        else:
+            label = f'Precip \u00D7{change[3:]}'
+        lax.scatter(np.nan, np.nan, s=50,color=fcolor, edgecolors=ecolor, marker='o', label=label)
 
-    lax.legend()
+    lax.legend(ncols=2, loc='center')
     lax.axis('off')
-    plt.savefig(base_fp+f'Figs/site_comparisons_{xvar}.png', dpi=300, bbox_inches='tight')
+    save_to = base_fp+f'Figs/site_comparisons_{xvar}.png'
+    if len(plot_vars) == 1:
+        save_to = base_fp+f'Figs/site_comparisons_{plot_vars[0]}_{xvar}_sens.png'
+    plt.savefig(save_to, dpi=300, bbox_inches='tight')
+    plt.show()
+
+def sensitivity_figure(yvar, xvar, output_dict):
+    var_dict = {'SMELT':'Melt (m w.e. / yr)', 'BDOT':'Accumulation (m w.e. / yr)', 
+                'MELT_ACC_RATIO':'Annual Melt-to-Accumulation Ratio','RAIN':'Rainfall (m w.e. / yr)',
+                'WATER':'Melt + Rainfall (m w.e. / yr)','elevation':'Elevation (m a.s.l.)',
+                'refreeze':'Refreeze (m w.e. / yr)','DIP':'Firn Air Content (m)','firn_depth':'Firn depth (m)',
+                'runoff':'Runoff (m w.e. / yr)','density_gradient':'Densification rate\n constant, $k$ (m$^{-1}$)',
+                'refreeze_ratio':'Refreeze / Melt Ratio (-)', 'ACC_MELT_RATIO':'Annual Accumulation / Melt Ratio',
+                'STEMP':'Surface temperature ($^{\circ}$C)','temperature':'Mean firn temperature ($^{\circ}$C)',
+                'density_age_gradient':'Density vs. age\nslope factor (yr$^{-1}$)'
+                }
+    
+    fig, ax = plt.subplots(figsize=(6, 4.5)) # figsize=(ncols*3, nrows*2))
+    # lax = fig.add_axes([0.9, 0.1, 0.8, 0.8])
+    ax.set_xlabel(var_dict[xvar])
+
+    markers = {'EC':'*', 'Z':'D', 'T':'s', 'KPS':'^','KQU':'v','KT1':'1','KT2':'3','KT3':'2'}
+
+    xs = []
+    ys = []
+    for _, site in enumerate(output_dict):
+        if xvar != 'elevation':
+            x = output_dict[site][xvar].mean()
+        else:
+            x = output_dict[site][xvar][0]
+
+        if yvar != 'elevation':
+            y = output_dict[site][yvar].median()
+        else:
+            y = output_dict[site][yvar][0]
+
+        if yvar == 'refreeze_ratio':
+            ax.set_ylim(0, 1.2)
+        if yvar  =='runoff':
+            ax.set_ylim(0, 3)
+        xs.append(x)
+        ys.append(y)
+            
+        s = site if '_t' not in site else site.split('_')[0]
+        if xvar == 'MELT_ACC_RATIO' and x > 1:
+            continue
+        if '_t' in site:
+            idict = {
+                    # 'temp-5':0,'temp-2':1,'temp-1':2,'temp+1':4,'temp+2':5,'temp+5':6,
+                        'temp+0':0,'temp+0.5':1,'temp+1':2,'temp+2':3,
+                    #  'tpx0.5':0,'tpx0.667':1,'tpx0.9':2,'tpx1.1':4,'tpx1.5':5,'tpx2':6,
+                    'tpx1':0,'tpx1.05':1,'tpx1.1':2,'tpx1.2':3,
+                        }
+            ecolor = warming_colors(idict[site.split('_')[-1]])
+            fcolor = ecolor if 'temp' in site else 'none'
+            size = 100 if markers[s] == '*' else 50
+            ax.scatter(x, y, color=fcolor, edgecolors=ecolor, marker=markers[s], s=size, )
+        elif site in ['EC','T','Z','KQU','KPS']:
+            # ax.errorbar(x, y, xerr=xerr, yerr=yerr,color=site_colors[s], marker=markers[s], markersize=8)  
+            size = 100 if markers[s] == '*' else 50
+            ax.scatter(x, y, color='k', s=size, marker=markers[s])         # site_colors[s],  
+        # elif site not in ['KT1','KT2','KT3']:
+        #     marker = '+' if 'EC' in s else 'x'
+        #     ax.scatter(x, y, s=100, color='k', marker=marker)      
+            
+        title = var_dict[yvar]
+        if yvar == 'MELT_ACC_RATIO':
+            title = 'Melt-to-Accumulation Ratio'
+        if '\n' in title:
+            ax.set_ylabel(title)
+        else:
+            ax.set_ylabel(title.replace('(', '\n('))
+
+    lax = ax
+    sites_by_elev = ['EC','T','Z','KQU','KPS'] # 'KT1','KT2','KT3',
+    for site in sites_by_elev:
+        elev = site_elevation[site]
+        label = get_glacier(site).capitalize() + ' '+ site
+        lax.scatter(np.nan, np.nan,  s=50,label=label, color='k', marker=markers[site])
+    lax.scatter(np.nan, np.nan, color='white', label=' ')
+    for change in ['temp+0.5','temp+1','temp+2','tpx1.05','tpx1.1','tpx1.2']:
+        ecolor = warming_colors(idict[change])
+        fcolor = ecolor if 'temp' in change else 'none'
+        if 'temp' in change:
+            label = f'Temp {change[4:]}'+'$^{\circ}$C'
+        else:
+            label = f'Precip \u00D7{change[3:]}'
+        lax.scatter(np.nan, np.nan, s=50,color=fcolor, edgecolors=ecolor, marker='o', label=label)
+
+    lax.legend(ncols=2, loc='upper left',columnspacing=0.1)
+    # lax.axis('off')
+    save_to = base_fp+f'Figs/Figure3.png'
+    plt.savefig(save_to, dpi=300, bbox_inches='tight')
     plt.show()
 
 def plot_melt_acc(sites):
@@ -983,13 +1135,15 @@ def plot_melt_acc(sites):
     plt.show()
 
 def animate(modeled, measured, dates, snowdepths=0):
-    fig, (ax, lax) = plt.subplots(1, 2, width_ratios=(1, 0.2))
+    fig, (ax, lax) = plt.subplots(1, 2, width_ratios=(3, 1),figsize=(5,4))
     ax.set_xlim(400, 900)
+    ax.set_ylabel('Depth (m)')
+    ax.set_xlabel('Density (kg m$^{-3}$)')
     ax.set_ylim(0, 30)
     ax.invert_yaxis()
     lax.plot(np.nan, np.nan, c=colors[0], linestyle=':',label='Model',linewidth=2)
     lax.plot(np.nan, np.nan, c='k',label='Measured')
-    lax.fill_between([np.nan, np.nan], np.nan, np.nan, color='gray', alpha=0.3, label='Seasonal snow')
+    lax.fill_between([np.nan, np.nan], np.nan, np.nan, color='gray', alpha=0.3, label='Seasonal\nsnow')
     lax.axis('off')
     lax.legend(loc='center')
 
@@ -1024,10 +1178,11 @@ def animate(modeled, measured, dates, snowdepths=0):
         ax.fill_between([300, 900], 0, snow_depth,color='gray', alpha=0.3)
         ax.set_title(date[:4])
         return line_meas, line_mod
-    
+
+    fig.subplots_adjust(left=0.2, right=0.95, bottom=0.15, top=0.9)
     ani = FuncAnimation(fig, update, frames=len(dates),
                             init_func=init, blit=False)
-    ani.save(base_fp+'Figs/animation.gif', fps=2)
+    ani.save(base_fp+'Figs/animation.gif', fps=2, dpi=300)
     return
 
 def animate_sites(sites, modeled, measured, dates, snowdepths=0):
