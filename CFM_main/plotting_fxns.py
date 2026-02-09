@@ -770,6 +770,26 @@ def get_dict(sites, output_fn, forcing_fn):
             list_all = ['temp'+str(v) if v < 0 else 'temp+'+str(v) for v in [0,0.5,1,2]] # -5,-2,-1,
             list_all += ['tpx'+str(v) for v in [1,1.05, 1.1, 1.2]] # 0.5,0.667,0.9,
 
+        # get firn data for 2025
+        if site != 'KQU':
+            dates_site = dates_wolverine_spring if site == 'EC' else dates_KPS_spring if site == 'KPS' else dates_KQU if site == 'KQU' else ['2025_04_20']
+            # date_2025 = dates_wolverine_spring[-1] if site == 'EC' else dates_KPS_spring[-1] if site == 'KPS' else dates_KQU[-1] if site == 'KQU' else '2025_04_20'
+            measured_gradient = []
+            for date in dates_site:
+                snow_df =  pd.read_csv(f'../Data/cores/{glacier}/{glacier}{site}_snowdepth.csv')
+                print(site, date)
+                min_depth = snow_df.loc[snow_df['date'] == date, 'snowdepth'].values[0]
+                density, layer_tops, layer_bottoms = get_density_measured(site,date)
+                layer_middles = layer_bottoms + (layer_bottoms - layer_tops) / 2
+                condition = (layer_middles >= min_depth) & (density <= 830)
+                layer_middles = layer_middles[condition]
+                density = density[condition]
+                y = np.log(density/(900-density))
+                m, b = np.polyfit(layer_middles, y, deg=1)
+                measured_gradient.append(m)
+        else:
+            measured_gradient = [np.nan]
+
         for string in list_all:
             glaciersite = glacier+site if '_' not in site else 'site'+site
             if '_' not in site:
@@ -785,17 +805,14 @@ def get_dict(sites, output_fn, forcing_fn):
             output_dict[dict_label] = {}
 
             # select annual spring dates to get a density gradient at
-            spring_dates = pd.date_range('1981-05-01','2025-05-01',freq='YS-MAY')
+            spring_dates = pd.date_range('1981-05-01','2024-05-01',freq='YS-MAY')
             all_decimal_time = output['density'][:, 0]
             target_time = to_decimal_year(spring_dates)
             annual_gradients = []
             annual_age_gradients = []
             annual_firndepth = []
             for ti, t in enumerate(target_time):
-                # if '2025' not in str(t):
-                #     annual_gradients.append(np.nan)
-                #     annual_firndepth.append(np.nan)
-                #     continue
+                # get modeled data
                 index = np.argmin(np.abs(all_decimal_time - t))
                 # get depth and data arrays
                 depth = output['depth'][1:]
@@ -847,9 +864,9 @@ def get_dict(sites, output_fn, forcing_fn):
             for var in ['refreeze','runoff','DIP']:
                 df[var] = output[var][1:, 1]
             df['temperature'] = np.mean(output['temperature'][1:, 1:], axis=1)
-            df_out = df[['refreeze','runoff','melt']].resample('YS-APR').sum().iloc[1:-1]
-            df_out['DIP'] = df['DIP'].resample('YS-APR').mean().iloc[1:-1]
-            df_out['temperature'] = df['temperature'].resample('YS-APR').mean().iloc[1:-1] - 273.15
+            df_out = df[['refreeze','runoff','melt']].resample('YS-OCT').sum().iloc[1:-1]
+            df_out['DIP'] = df['DIP'].resample('YS-OCT').mean().iloc[1:-1]
+            df_out['temperature'] = df['temperature'].resample('YS-OCT').mean().iloc[1:-1] - 273.15
             df_out['refreeze_ratio'] = df_out['refreeze'] / df_out['melt']
             df_out['density_gradient'] = annual_gradients
             df_out['firn_depth'] = annual_firndepth
@@ -858,8 +875,8 @@ def get_dict(sites, output_fn, forcing_fn):
             # LOAD FORCING VARS
             fn_force = forcing_fn.replace('SITE', glaciersite).replace('CHANGE', string)
             df = pd.read_csv(fn_force, index_col=0, parse_dates=True)
-            df_mb = df[['SMELT','BDOT','RAIN']].resample('YS-APR').sum().iloc[:-1] / 1000
-            df_mb['STEMP'] = df['TS'].resample('YS-APR').mean().iloc[:-1]- 273.15
+            df_mb = df[['SMELT','BDOT','RAIN']].resample('YS-OCT').sum().iloc[:-1] / 1000
+            df_mb['STEMP'] = df['TS'].resample('YS-OCT').mean().iloc[:-1]- 273.15
             df_mb['MELT_ACC_RATIO'] = df_mb['SMELT'] / df_mb['BDOT']
             df_mb['ACC_MELT_RATIO'] = df_mb['BDOT'] / df_mb['SMELT']
             df_mb['WATER'] = df_mb['SMELT'] + df_mb['RAIN']
@@ -869,6 +886,7 @@ def get_dict(sites, output_fn, forcing_fn):
                     output_dict[dict_label][var] = df_out[var]
                 else:
                     output_dict[dict_label][var] = df_mb[var]
+                output_dict[dict_label]['k_2025'] = np.array(measured_gradient)
             if site in site_elevation:
                 output_dict[dict_label]['elevation'] = [site_elevation[site]]
             else:
@@ -1012,7 +1030,7 @@ def sensitivity_figure(yvar, xvar, output_dict):
                 'MELT_ACC_RATIO':'Annual Melt-to-Accumulation Ratio','RAIN':'Rainfall (m w.e. / yr)',
                 'WATER':'Melt + Rainfall (m w.e. / yr)','elevation':'Elevation (m a.s.l.)',
                 'refreeze':'Refreeze (m w.e. / yr)','DIP':'Firn Air Content (m)','firn_depth':'Firn depth (m)',
-                'runoff':'Runoff (m w.e. / yr)','density_gradient':'Densification rate\n constant, $k$ (m$^{-1}$)',
+                'runoff':'Runoff (m w.e. / yr)','density_gradient':'Log-density gradient, $k$ (m$^{-1}$)',
                 'refreeze_ratio':'Refreeze / Melt Ratio (-)', 'ACC_MELT_RATIO':'Annual Accumulation / Melt Ratio',
                 'STEMP':'Surface temperature ($^{\circ}$C)','temperature':'Mean firn temperature ($^{\circ}$C)',
                 'density_age_gradient':'Density vs. age\nslope factor (yr$^{-1}$)'
@@ -1055,13 +1073,19 @@ def sensitivity_figure(yvar, xvar, output_dict):
                     'tpx1':0,'tpx1.05':1,'tpx1.1':2,'tpx1.2':3,
                         }
             ecolor = warming_colors(idict[site.split('_')[-1]])
-            fcolor = ecolor if 'temp' in site else 'none'
-            size = 100 if markers[s] == '*' else 50
-            ax.scatter(x, y, color=fcolor, edgecolors=ecolor, marker=markers[s], s=size, )
+            fcolor = 'none'
+            size = 200 if markers[s] == '*' else 120
+            # add_hatched_symbol(ax, x, y, markers[s])
+            hatch = '||||----' if 'temp' in site else ''
+            ax.scatter(x, y, color=fcolor, edgecolors=ecolor, marker=markers[s], s=size, hatch=hatch,)
+            # if 'temp' in site:
+            #     ax.scatter(x, y, color=ecolor, marker='x', s=50)
         elif site in ['EC','T','Z','KQU','KPS']:
             # ax.errorbar(x, y, xerr=xerr, yerr=yerr,color=site_colors[s], marker=markers[s], markersize=8)  
-            size = 100 if markers[s] == '*' else 50
+            size = 200 if markers[s] == '*' else 120
             ax.scatter(x, y, color='k', s=size, marker=markers[s])         # site_colors[s],  
+            # if site != 'KQU':
+            #     ax.scatter(x, np.median(output_dict[site]['k_2025']), color='gray', s=size, marker=markers[s])
         # elif site not in ['KT1','KT2','KT3']:
         #     marker = '+' if 'EC' in s else 'x'
         #     ax.scatter(x, y, s=100, color='k', marker=marker)      
@@ -1072,7 +1096,7 @@ def sensitivity_figure(yvar, xvar, output_dict):
         if '\n' in title:
             ax.set_ylabel(title)
         else:
-            ax.set_ylabel(title.replace('(', '\n('))
+            ax.set_ylabel(title) #.replace('(', '\n('))
 
     lax = ax
     sites_by_elev = ['EC','T','Z','KQU','KPS'] # 'KT1','KT2','KT3',
@@ -1085,10 +1109,12 @@ def sensitivity_figure(yvar, xvar, output_dict):
         ecolor = warming_colors(idict[change])
         fcolor = ecolor if 'temp' in change else 'none'
         if 'temp' in change:
-            label = f'Temp {change[4:]}'+'$^{\circ}$C'
+            label = f'Temp {change[4:]}'+'°C'
+            hatch = '||||----' 
         else:
             label = f'Precip \u00D7{change[3:]}'
-        lax.scatter(np.nan, np.nan, s=50,color=fcolor, edgecolors=ecolor, marker='o', label=label)
+            hatch = None
+        lax.scatter(np.nan, np.nan, s=100,color='none',edgecolors=ecolor, marker='o', hatch=hatch, label=label)
 
     lax.legend(ncols=2, loc='upper left',columnspacing=0.1)
     # lax.axis('off')
