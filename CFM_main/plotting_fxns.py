@@ -765,8 +765,11 @@ def get_dict(sites, output_fn, forcing_fn):
             forcing_fn = base_fp + 'Forcings/SITE_1d_forcings.csv'
         list_all = ['']
         if site in ['T','Z','KPS','EC','KQU']:
-            output_fn = base_fp + 'Output/SITE/SITE_CHANGE/CFMresults.hdf5'
-            forcing_fn = base_fp + 'Forcings/SITE/SITE_1d_CHANGE_forcings.csv'
+            output_fn = base_fp + 'Output/SITE/SITE_CHANGE_redo/CFMresults.hdf5'
+            if site != 'EC':
+                forcing_fn = base_fp + 'Forcings/SITE/SITE_1d_CHANGE_forcings_UPDATED.csv'
+            else:
+                forcing_fn = base_fp + 'Forcings/SITE/SITE_1d_CHANGE_forcings.csv'
             list_all = ['temp'+str(v) if v < 0 else 'temp+'+str(v) for v in [0,0.5,1,2]] # -5,-2,-1,
             list_all += ['tpx'+str(v) for v in [1,1.05, 1.1, 1.2]] # 0.5,0.667,0.9,
 
@@ -1118,7 +1121,7 @@ def sensitivity_figure(yvar, xvar, output_dict):
 
     lax.legend(ncols=2, loc='upper left',columnspacing=0.1)
     # lax.axis('off')
-    save_to = base_fp+f'Figs/Figure3.png'
+    save_to = base_fp+f'Figs/Figure3_redo.png'
     plt.savefig(save_to, dpi=300, bbox_inches='tight')
     plt.show()
 

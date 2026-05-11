@@ -139,9 +139,14 @@ def run_cfm(out_fp, args, forcing_fn, physRho='GSFC2020'):
 
     # FORMAT THE CFM FORCING DATA (CREATES SPINUP)
     # Returns climateTS : dictionary with the various climate fields needed in the correct units
-    climateTS, StpsPerYr, depth_S1, depth_S2, grid_bottom, SEBfluxes = (
-            RCM.makeSpinFiles(df,timeres=c['DFresample'],Tinterp='mean',spin_date_st = sds, 
-            spin_date_end = sde, melt=c['MELT'], desired_depth = None, SEB=c['SEB'], rho_bottom=850))
+    try:
+        climateTS, StpsPerYr, depth_S1, depth_S2, grid_bottom, SEBfluxes = (
+                RCM.makeSpinFiles(df,timeres=c['DFresample'],Tinterp='mean',spin_date_st = sds, 
+                spin_date_end = sde, melt=c['MELT'], desired_depth = None, SEB=c['SEB'], rho_bottom=850))
+    except:
+        climateTS, StpsPerYr, depth_S1, depth_S2, grid_bottom, SEBfluxes = (
+                RCM.makeSpinFiles(df,timeres=c['DFresample'],Tinterp='mean',spin_date_st = sds, 
+                spin_date_end = sde, melt=c['MELT'], desired_depth = None, SEB=c['SEB'], rho_bottom=700))
             # May need to adjust rho_bottom if get an error out of this line with really high
             # accumulation rates (means densities at the bottom of the domain are less than 850)
 

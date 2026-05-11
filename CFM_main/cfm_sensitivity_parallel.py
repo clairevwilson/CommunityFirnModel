@@ -39,7 +39,7 @@ fp_forcings = '../../Firn/Forcings/'
 fp_out = '../../Firn/Output/'
 
 # Set the sites, variables and values to loop through in sensitivity test
-sites = ['EC','T','Z','KQU','KPS']
+sites = ['EC'] # ,'T','Z','KQU','KPS']
 runs_dict = {
             'temp':[0, 0.5, 1, 2], # 
              'precip':[1, 1.05, 1.1, 1.2], # 
@@ -91,7 +91,7 @@ for site in sites:
 
             # Get filenames including the sensitivity run information
             fn_data += f'{args.glacier}{site}_1d_{var_str}_forcings.csv' # 
-            fn_out += args.glacier + args.site + '_' + var_str + '/' 
+            fn_out += args.glacier + args.site + '_' + var_str + '_redo/' 
 
             # Copy args for this run
             args_run = copy.deepcopy(args)
