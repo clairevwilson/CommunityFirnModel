@@ -16,6 +16,7 @@ import socket
 import contextlib
 import os
 import traceback
+import xarray as xr
 
 # Parse command-line args
 parser = argparse.ArgumentParser()
@@ -40,14 +41,16 @@ fp_out = '../../Firn/Output/'
 
 # Set the sites, variables and values to loop through in sensitivity test
 sites = ['EC','T','Z','KQU','KPS']
-runs_dict = {
-            'temp':[0, 0.5, 1, 2], # 
-             'precip':[1, 1.05, 1.1, 1.2], # 
-             }
+base_fp = '/trace/group/rounce/cvwilson/Output/paper2/{g}{s}_subset/'
+n_runs = 0
+for site in sites:
+    glacier = 'wolverine' if site == 'EC' else 'kahiltna' if 'K' in site else 'gulkana'
+    for fn in os.listdir(base_fp.format(g=glacier, s=site)):
+        n_runs += 1
 
 # Define number of runs and number of simultaneous processers
 # to enable doing more runs than you have processers
-n_runs = len(sites) * sum([len(runs_dict[n]) for n in runs_dict])
+n_runs = len(sites) * n_runs
 n_processes = args_base.n_simultaneous_processes
 print(f'Beginning {n_runs} runs on {n_processes} processes')
 if n_runs <= n_processes:
@@ -73,45 +76,68 @@ for site in sites:
     args = copy.deepcopy(args_base)
     args.site = site
     args.glacier = 'wolverine' if site == 'EC' else 'kahiltna' if 'K' in site else 'gulkana'
+    fp = base_fp.format(g=args.glacier, s=args.site)
 
-    # Loop through temperature and precip changes
-    for run_type in runs_dict:
-        # Loop through values in either temperature or precip changes
-        list_runs = runs_dict[run_type]
-        for value in list_runs:
-            # Add glacier/site to the filepaths
-            fn_data = fp_forcings + args.glacier + args.site +'/'
-            fn_out = fp_out + args.glacier + args.site +'/'
+    # Create the dataframe containing the PEBSI data for CFM forcing
+    for fn in os.listdir(fp):
+        param_fn = os.path.join(fp, fn)
+        kp = fn.split('kp')[-1].split('_')[0]
+        lapserate = fn.split('lapse_rate')[-1].split('_')[0]
+        var_str = f'kp{kp}_lr{lapserate}'
 
-            # Specify string to add to filename
-            if run_type == 'temp':
-                var_str = 'temp+'+str(value) if value >= 0 else 'temp'+str(value)
-            elif run_type == 'precip':
-                var_str = 'tpx'+str(value)
+        # Add glacier/site to the filepaths
+        fn_data = fp_forcings + args.glacier + args.site +'/'
+        fn_out = fp_out + args.glacier + args.site +'/'
 
-            # Get filenames including the sensitivity run information
-            fn_data += f'{args.glacier}{site}_1d_{var_str}_forcings_FINAL.csv' # 
-            fn_out += args.glacier + args.site + '_' + var_str + '_FINAL/'
+        # Get filenames
+        fn_data += f'{args.glacier}{site}_1d_{var_str}_forcings_recalibrate.csv' # 
+        fn_out += f'{args.glacier}{args.site}_{var_str}_recalibrate/'
 
-            # Copy args for this run
-            args_run = copy.deepcopy(args)
+        # Load the dataset
+        ds = xr.open_dataset(param_fn)
+        timeres='1d'
 
-            # RERUN SPINUP????
-            args_run.new_spin = False
-            if args_run.new_spin:
-                fn_out = fn_out[:-1] + '_respun/'
+        # get sublimation from any negative vaporsolid mass fluxes in m w.e.
+        ds['vaporsolid'][ds['vaporsolid'] > 0] = 0
+        ds['sublim'] = ds['vaporsolid']
 
-            # Pack vars
-            packed_vars[set_no].append((fn_out, args_run, fn_data))
+        # change units of surftemp
+        ds['surftemp'] += 273.15
 
-            # Check if moving to the next set of runs
-            n_runs_set = n_runs_per_process + (1 if set_no < n_process_with_extra else 0)
-            if run_no == n_runs_set - 1:
-                set_no += 1
-                run_no = -1
+        # resample to the specified resolution with sum (mass balance terms) and mean (surface temp)
+        ds_mb = ds[['melt','accum','rainfall','sublim']].resample(time=timeres).sum()
+        ds_mb *= 1000   # convert m w.e. to kg m-2
+        ds_other = ds[['surftemp']].resample(time=timeres).mean()
 
-            # Advance counter
-            run_no += 1
+        # merge datasets and rename
+        data_in = xr.merge([ds_mb, ds_other])
+        data_in = data_in.rename_vars({'melt':'SMELT', 'rainfall':'RAIN', 
+                                        'surftemp':'TS', 'accum':'BDOT',
+                                        'sublim':'SUBLIM'}) # , 'surfdens':'RHOS'
+
+        # store data as a .csv       
+        df = data_in[['BDOT','RAIN','TS','SMELT','SUBLIM']].to_dataframe()
+        df.to_csv(fn_data)
+
+        # Copy args for this run
+        args_run = copy.deepcopy(args)
+
+        # RERUN SPINUP????
+        args_run.new_spin = False
+        if args_run.new_spin:
+            fn_out = fn_out[:-1] + '_respun/'
+
+        # Pack vars
+        packed_vars[set_no].append((fn_out, args_run, fn_data))
+
+        # Check if moving to the next set of runs
+        n_runs_set = n_runs_per_process + (1 if set_no < n_process_with_extra else 0)
+        if run_no == n_runs_set - 1:
+            set_no += 1
+            run_no = -1
+
+        # Advance counter
+        run_no += 1
 
 def run_cfm_parallel(list_inputs):
     """

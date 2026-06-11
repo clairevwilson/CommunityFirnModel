@@ -757,7 +757,7 @@ def get_dict(sites, output_fn, forcing_fn):
         glacier = get_glacier(site)
 
         # LOAD OUTPUT VARS
-        if 'K' in site:
+        if 'KT' in site:
             output_fn = base_fp + 'Output/SITE/SITE_kahiltnatest/CFMresults.hdf5'
             forcing_fn = base_fp + 'Forcings/SITE/SITE_1d_kahiltnatest.csv'
         elif '_' in site:
@@ -765,11 +765,8 @@ def get_dict(sites, output_fn, forcing_fn):
             forcing_fn = base_fp + 'Forcings/SITE_1d_forcings.csv'
         list_all = ['']
         if site in ['T','Z','KPS','EC','KQU']:
-            output_fn = base_fp + 'Output/SITE/SITE_CHANGE_redo/CFMresults.hdf5'
-            if site != 'EC':
-                forcing_fn = base_fp + 'Forcings/SITE/SITE_1d_CHANGE_forcings_UPDATED.csv'
-            else:
-                forcing_fn = base_fp + 'Forcings/SITE/SITE_1d_CHANGE_forcings.csv'
+            output_fn = base_fp + 'Output/SITE/SITE_CHANGE_FINAL/CFMresults.hdf5'
+            forcing_fn = base_fp + 'Forcings/SITE/SITE_1d_CHANGE_forcings_FINAL.csv'
             list_all = ['temp'+str(v) if v < 0 else 'temp+'+str(v) for v in [0,0.5,1,2]] # -5,-2,-1,
             list_all += ['tpx'+str(v) for v in [1,1.05, 1.1, 1.2]] # 0.5,0.667,0.9,
 
@@ -1049,7 +1046,7 @@ def sensitivity_figure(yvar, xvar, output_dict):
     ys = []
     for _, site in enumerate(output_dict):
         if xvar != 'elevation':
-            x = output_dict[site][xvar].mean()
+            x = output_dict[site][xvar].median()
         else:
             x = output_dict[site][xvar][0]
 
@@ -1058,6 +1055,8 @@ def sensitivity_figure(yvar, xvar, output_dict):
         else:
             y = output_dict[site][yvar][0]
 
+        if 'Z' in site:
+            print(site, x, y)
         if yvar == 'refreeze_ratio':
             ax.set_ylim(0, 1.2)
         if yvar  =='runoff':
@@ -1119,9 +1118,10 @@ def sensitivity_figure(yvar, xvar, output_dict):
             hatch = None
         lax.scatter(np.nan, np.nan, s=100,color='none',edgecolors=ecolor, marker='o', hatch=hatch, label=label)
 
-    lax.legend(ncols=2, loc='upper left',columnspacing=0.1)
+    # ax.set_ylim(0.015, 0.2)
+    lax.legend(ncols=2, loc='upper right',columnspacing=0.1)
     # lax.axis('off')
-    save_to = base_fp+f'Figs/Figure3_redo.png'
+    save_to = base_fp+f'Figs/Figure3_final.png'
     plt.savefig(save_to, dpi=300, bbox_inches='tight')
     plt.show()
 
